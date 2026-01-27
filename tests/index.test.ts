@@ -335,6 +335,6 @@ describe("Plan", () => {
 
 describe("LATEST_MODEL_NAME", () => {
   it("should be defined", () => {
-    expect(LATEST_MODEL_NAME).toBe("kirha/planner-021225");
+    expect(LATEST_MODEL_NAME).toBe("kirha/planner");
   });
 });
