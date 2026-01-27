@@ -36,7 +36,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/kirha/planner"
+    "url": "https://github.com/kirha-ai/planner-typescript-sdk"
   },
   "devDependencies": {
     "@biomejs/biome": "2.3.10",
