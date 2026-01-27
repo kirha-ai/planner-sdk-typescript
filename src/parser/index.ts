@@ -31,11 +31,29 @@ export const ParamSchema: z.ZodType<ParamsValue> = z.lazy(() =>
   ]),
 );
 
-const ToolStepSchema = z.object({
-  toolName: z.string(),
-  arguments: z.record(z.string(), z.unknown()),
-  thought: z.string().optional(),
-});
+const ToolStepSchema = z
+  .object({
+    toolName: z.string().optional(),
+    tool: z.string().optional(),
+    arguments: z.record(z.string(), z.unknown()).optional(),
+    args: z.record(z.string(), z.unknown()).optional(),
+    params: z.record(z.string(), z.unknown()).optional(),
+    parameters: z.record(z.string(), z.unknown()).optional(),
+    thought: z.string().optional(),
+  })
+  .transform((step) => ({
+    toolName: step.toolName ?? step.tool,
+    arguments:
+      step.arguments ?? step.args ?? step.params ?? step.parameters ?? {},
+    thought: step.thought,
+  }))
+  .refine((step) => step.toolName !== undefined, {
+    message: 'Step must have either "toolName" or "tool"',
+  }) as z.ZodType<{
+  toolName: string;
+  arguments: Record<string, unknown>;
+  thought?: string;
+}>;
 
 const PlanSchema = z.array(ToolStepSchema);
 

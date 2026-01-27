@@ -335,6 +335,122 @@ describe("parsePlanSteps", () => {
     });
   });
 
+  describe("tool name aliases", () => {
+    it('should accept "tool" as alias for "toolName"', () => {
+      const stringPlan = JSON.stringify([
+        {
+          tool: "getBitcoinPrice",
+          arguments: { currency: "USD" },
+        },
+      ]);
+
+      const planSteps = parsePlanSteps(stringPlan);
+
+      expect(planSteps).toHaveLength(1);
+      expect(planSteps[0]?.toolName).toBe("getBitcoinPrice");
+      expect(planSteps[0]?.arguments).toEqual({ currency: "USD" });
+    });
+
+    it('"toolName" should take precedence over "tool"', () => {
+      const stringPlan = JSON.stringify([
+        {
+          toolName: "correctName",
+          tool: "wrongName",
+          arguments: {},
+        },
+      ]);
+
+      const planSteps = parsePlanSteps(stringPlan);
+
+      expect(planSteps).toHaveLength(1);
+      expect(planSteps[0]?.toolName).toBe("correctName");
+    });
+
+    it("should throw when neither toolName nor tool is provided", () => {
+      const stringPlan = JSON.stringify([
+        {
+          arguments: { currency: "USD" },
+        },
+      ]);
+
+      expect(() => parsePlanSteps(stringPlan)).toThrow();
+    });
+  });
+
+  describe("arguments aliases", () => {
+    it('should accept "args" as alias for "arguments"', () => {
+      const stringPlan = JSON.stringify([
+        {
+          toolName: "getBitcoinPrice",
+          args: { currency: "USD" },
+        },
+      ]);
+
+      const planSteps = parsePlanSteps(stringPlan);
+
+      expect(planSteps).toHaveLength(1);
+      expect(planSteps[0]?.arguments).toEqual({ currency: "USD" });
+    });
+
+    it('should accept "params" as alias for "arguments"', () => {
+      const stringPlan = JSON.stringify([
+        {
+          toolName: "getBitcoinPrice",
+          params: { currency: "USD" },
+        },
+      ]);
+
+      const planSteps = parsePlanSteps(stringPlan);
+
+      expect(planSteps).toHaveLength(1);
+      expect(planSteps[0]?.arguments).toEqual({ currency: "USD" });
+    });
+
+    it('should accept "parameters" as alias for "arguments"', () => {
+      const stringPlan = JSON.stringify([
+        {
+          toolName: "getBitcoinPrice",
+          parameters: { currency: "USD" },
+        },
+      ]);
+
+      const planSteps = parsePlanSteps(stringPlan);
+
+      expect(planSteps).toHaveLength(1);
+      expect(planSteps[0]?.arguments).toEqual({ currency: "USD" });
+    });
+
+    it('"arguments" should take precedence over aliases', () => {
+      const stringPlan = JSON.stringify([
+        {
+          toolName: "getBitcoinPrice",
+          arguments: { currency: "USD" },
+          args: { currency: "EUR" },
+          params: { currency: "GBP" },
+          parameters: { currency: "JPY" },
+        },
+      ]);
+
+      const planSteps = parsePlanSteps(stringPlan);
+
+      expect(planSteps).toHaveLength(1);
+      expect(planSteps[0]?.arguments).toEqual({ currency: "USD" });
+    });
+
+    it("should default to empty object when no arguments alias is provided", () => {
+      const stringPlan = JSON.stringify([
+        {
+          toolName: "ping",
+        },
+      ]);
+
+      const planSteps = parsePlanSteps(stringPlan);
+
+      expect(planSteps).toHaveLength(1);
+      expect(planSteps[0]?.arguments).toEqual({});
+    });
+  });
+
   describe("error handling", () => {
     it("should throw error for invalid JSON input", () => {
       const invalidJson = "{invalid: json}";

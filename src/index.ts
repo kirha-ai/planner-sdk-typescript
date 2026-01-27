@@ -29,9 +29,9 @@ export interface PlanOptions {
 
 export class Plan {
   constructor(
-    private steps: PlanStep[],
+    public steps: PlanStep[],
     // biome-ignore lint/correctness/noUnusedPrivateClassMembers: not used for the moment, but useful for logs
-    private think?: string,
+    public think?: string,
   ) {}
 
   public async execute(options: ExecuteOptions): Promise<StepResult[]> {
@@ -78,7 +78,7 @@ export class Planner {
         { role: "system", content: systemPrompt },
         { role: "user", content: query },
       ],
-      temperature: options.temperature ?? 0,
+      temperature: options.temperature ?? 0.3,
       max_tokens: options.maxTokens ?? 10_000,
     });
 
