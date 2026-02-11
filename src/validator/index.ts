@@ -311,24 +311,21 @@ function getObjectChildSchema(
   }
 
   const catchall = schema.def.catchall as z.ZodTypeAny | undefined;
-  if (!isUsableCatchall(catchall)) {
-    return undefined;
+
+  if (
+    catchall &&
+    !(catchall instanceof z.ZodUnknown) &&
+    !(catchall instanceof z.ZodAny) &&
+    !(catchall instanceof z.ZodNever)
+  ) {
+    return catchall;
   }
 
-  return catchall;
-}
+  if (Object.keys(shape).length === 0) {
+    return z.any();
+  }
 
-function isUsableCatchall(
-  schema: z.ZodTypeAny | undefined,
-): schema is z.ZodTypeAny {
-  return Boolean(
-    schema &&
-      !(
-        schema instanceof z.ZodUnknown ||
-        schema instanceof z.ZodAny ||
-        schema instanceof z.ZodNever
-      ),
-  );
+  return undefined;
 }
 
 function unwrapSchema(schema: z.ZodTypeAny): z.ZodTypeAny {
@@ -350,7 +347,10 @@ function isSchemaCompatible(
   const expectedUnwrapped = unwrapSchema(expected);
   const actualUnwrapped = unwrapSchema(actual);
 
-  if (expectedUnwrapped instanceof z.ZodAny) {
+  if (
+    expectedUnwrapped instanceof z.ZodAny ||
+    actualUnwrapped instanceof z.ZodAny
+  ) {
     return true;
   }
 

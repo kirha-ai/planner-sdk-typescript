@@ -892,7 +892,7 @@ describe("isValidPlan", () => {
             items: {
               type: "object",
               properties: {},
-              additionalProperties: { type: "string" },
+              required: [],
             },
           },
         },
