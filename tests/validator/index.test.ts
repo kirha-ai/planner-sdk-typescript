@@ -866,6 +866,118 @@ describe("isValidPlan", () => {
     expect(result.errors).toHaveLength(0);
   });
 
+  it("resolves dynamic keys through object with empty properties (Record type)", () => {
+    const searchTool: Tool = {
+      name: "webSearch",
+      description: "Structured web search",
+      inputSchema: JSON.stringify({
+        type: "object",
+        properties: {
+          query: { type: "string" },
+          outputKeys: {
+            type: "array",
+            items: {
+              type: "array",
+              prefixItems: [{ type: "string" }, { type: "string" }],
+            },
+          },
+        },
+        required: ["query", "outputKeys"],
+      }),
+      outputSchema: JSON.stringify({
+        type: "object",
+        properties: {
+          data: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {},
+              additionalProperties: { type: "string" },
+            },
+          },
+        },
+        required: ["data"],
+      }),
+      handler: async () => ({ data: [{ coin_name: "PEPE" }] }),
+    };
+
+    const result = isValidPlan(
+      [
+        {
+          stepId: "step-search",
+          status: PlanStepStatus.Pending,
+          toolName: "webSearch",
+          arguments: {
+            query: "top meme coin",
+            outputKeys: [["coin_name", "The coin name"]],
+          },
+        },
+        {
+          stepId: "step-use-search",
+          status: PlanStepStatus.Pending,
+          toolName: "sendEmail",
+          arguments: {
+            body: {
+              $fromTemplateString: "Top coin: {0}",
+              $values: [
+                { $fromStep: "step-search", $outputKey: "data.0.coin_name" },
+              ],
+            },
+          },
+        },
+      ],
+      [...tools, searchTool],
+    );
+
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it("resolves dynamic keys through object with additionalProperties", () => {
+    const recordTool: Tool = {
+      name: "getRecord",
+      description: "Get a record",
+      inputSchema: '{"type":"object","properties":{}}',
+      outputSchema: JSON.stringify({
+        type: "object",
+        properties: {
+          data: {
+            type: "object",
+            additionalProperties: { type: "string" },
+          },
+        },
+        required: ["data"],
+      }),
+      handler: async () => ({ data: { key: "value" } }),
+    };
+
+    const result = isValidPlan(
+      [
+        {
+          stepId: "step-record",
+          status: PlanStepStatus.Pending,
+          toolName: "getRecord",
+          arguments: {},
+        },
+        {
+          stepId: "step-use-record",
+          status: PlanStepStatus.Pending,
+          toolName: "sendEmail",
+          arguments: {
+            body: {
+              $fromStep: "step-record",
+              $outputKey: "data.someKey",
+            },
+          },
+        },
+      ],
+      [...tools, recordTool],
+    );
+
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
   it("validates union types in schemas", () => {
     const unionTool: Tool = {
       name: "processValue",

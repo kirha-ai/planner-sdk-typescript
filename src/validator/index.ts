@@ -291,13 +291,44 @@ function getSchemaAtPath(
     return undefined;
   }
 
-  const shape = unwrapped.shape as Record<string, z.ZodTypeAny>;
-  const childSchema = shape[segment];
+  const childSchema = getObjectChildSchema(unwrapped, segment);
+
   if (!childSchema) {
     return undefined;
   }
 
   return getSchemaAtPath(childSchema, remainingPath);
+}
+
+function getObjectChildSchema(
+  schema: z.ZodObject,
+  segment: string,
+): z.ZodTypeAny | undefined {
+  const shape = schema.shape as Record<string, z.ZodTypeAny>;
+  const direct = shape[segment];
+  if (direct) {
+    return direct;
+  }
+
+  const catchall = schema.def.catchall as z.ZodTypeAny | undefined;
+  if (!isUsableCatchall(catchall)) {
+    return undefined;
+  }
+
+  return catchall;
+}
+
+function isUsableCatchall(
+  schema: z.ZodTypeAny | undefined,
+): schema is z.ZodTypeAny {
+  return Boolean(
+    schema &&
+      !(
+        schema instanceof z.ZodUnknown ||
+        schema instanceof z.ZodAny ||
+        schema instanceof z.ZodNever
+      ),
+  );
 }
 
 function unwrapSchema(schema: z.ZodTypeAny): z.ZodTypeAny {
@@ -413,6 +444,7 @@ function isOptionalField(schema: z.ZodTypeAny): boolean {
 const KNOWN_ZOD_TYPES: Array<[new (...args: never[]) => z.ZodTypeAny, string]> =
   [
     [z.ZodAny, "any"],
+    [z.ZodUnknown, "any"],
     [z.ZodString, "string"],
     [z.ZodNumber, "number"],
     [z.ZodBoolean, "boolean"],
