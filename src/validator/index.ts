@@ -390,11 +390,13 @@ function validateStringTemplateReference({
     );
   }
 
+  const stringCoercible = z.union([z.string(), z.number(), z.boolean()]);
+
   for (const ref of reference.$values) {
     validateOutputReference({
       reference: ref,
       argumentPath,
-      expectedSchema: z.string(),
+      expectedSchema: stringCoercible,
       step,
       stepsById,
       schemasByTool,

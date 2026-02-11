@@ -65,6 +65,17 @@ describe("resolveValue", () => {
     );
   });
 
+  it("should resolve template string with number value", () => {
+    const outputs = new Map<string, unknown>([["step-1", { temperature: 42 }]]);
+
+    const template = {
+      $fromTemplateString: "Temperature is {0} degrees",
+      $values: [{ $fromStep: "step-1", $outputKey: "temperature" }],
+    };
+
+    expect(resolveValue(template, outputs)).toBe("Temperature is 42 degrees");
+  });
+
   it("should resolve array of values", () => {
     const outputs = new Map<string, unknown>([
       ["step-1", { a: 1 }],

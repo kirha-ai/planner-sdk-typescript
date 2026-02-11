@@ -268,6 +268,29 @@ describe("isValidPlan", () => {
     expect(result.valid).toBe(true);
   });
 
+  it("accepts number output interpolated in string template for string field", () => {
+    const result = isValidPlan(
+      [
+        stepOne,
+        {
+          stepId: "step-num-tpl",
+          status: PlanStepStatus.Pending,
+          toolName: "sendEmail",
+          arguments: {
+            body: {
+              $fromTemplateString: "Temperature is {0} degrees",
+              $values: [{ $fromStep: "step-1", $outputKey: "temperature" }],
+            },
+          },
+        },
+      ],
+      tools,
+    );
+
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
   it("validates valid string template references", () => {
     const result = isValidPlan(
       [
