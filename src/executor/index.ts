@@ -169,7 +169,11 @@ export function resolveValue(
         stepOutput,
         parsePath(ref.$outputKey),
       );
-      result = result.replace(`{${i}}`, String(resolvedValue));
+      const stringified =
+        typeof resolvedValue === "object" && resolvedValue !== null
+          ? JSON.stringify(resolvedValue)
+          : String(resolvedValue);
+      result = result.replace(`{${i}}`, stringified);
     }
 
     return result;

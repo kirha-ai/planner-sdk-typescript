@@ -291,6 +291,117 @@ describe("isValidPlan", () => {
     expect(result.errors).toHaveLength(0);
   });
 
+  it("accepts object output interpolated in string template", () => {
+    const objectOutputTool: Tool = {
+      name: "getData",
+      description: "Get data",
+      inputSchema: '{"type":"object","properties":{}}',
+      outputSchema:
+        '{"type":"object","properties":{"result":{"type":"object","properties":{"key":{"type":"string"}}}}}',
+      handler: async () => ({ result: { key: "value" } }),
+    };
+
+    const result = isValidPlan(
+      [
+        {
+          stepId: "step-obj",
+          status: PlanStepStatus.Pending,
+          toolName: "getData",
+          arguments: {},
+        },
+        {
+          stepId: "step-obj-tpl",
+          status: PlanStepStatus.Pending,
+          toolName: "sendEmail",
+          arguments: {
+            body: {
+              $fromTemplateString: "Data: {0}",
+              $values: [{ $fromStep: "step-obj", $outputKey: "result" }],
+            },
+          },
+        },
+      ],
+      [...tools, objectOutputTool],
+    );
+
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it("accepts object inside array output interpolated in string template", () => {
+    const objectInArrayTool: Tool = {
+      name: "getItems",
+      description: "Get items",
+      inputSchema: '{"type":"object","properties":{}}',
+      outputSchema:
+        '{"type":"object","properties":{"items":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"}}}}}}',
+      handler: async () => ({ items: [{ name: "test" }] }),
+    };
+
+    const result = isValidPlan(
+      [
+        {
+          stepId: "step-items",
+          status: PlanStepStatus.Pending,
+          toolName: "getItems",
+          arguments: {},
+        },
+        {
+          stepId: "step-items-tpl",
+          status: PlanStepStatus.Pending,
+          toolName: "sendEmail",
+          arguments: {
+            body: {
+              $fromTemplateString: "First item: {0}",
+              $values: [{ $fromStep: "step-items", $outputKey: "items.0" }],
+            },
+          },
+        },
+      ],
+      [...tools, objectInArrayTool],
+    );
+
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it("accepts array output interpolated in string template", () => {
+    const arrayOutputTool: Tool = {
+      name: "getTags",
+      description: "Get tags",
+      inputSchema: '{"type":"object","properties":{}}',
+      outputSchema:
+        '{"type":"object","properties":{"tags":{"type":"array","items":{"type":"string"}}}}',
+      handler: async () => ({ tags: ["a", "b"] }),
+    };
+
+    const result = isValidPlan(
+      [
+        {
+          stepId: "step-arr",
+          status: PlanStepStatus.Pending,
+          toolName: "getTags",
+          arguments: {},
+        },
+        {
+          stepId: "step-arr-tpl",
+          status: PlanStepStatus.Pending,
+          toolName: "sendEmail",
+          arguments: {
+            body: {
+              $fromTemplateString: "Tags: {0}",
+              $values: [{ $fromStep: "step-arr", $outputKey: "tags" }],
+            },
+          },
+        },
+      ],
+      [...tools, arrayOutputTool],
+    );
+
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
   it("validates valid string template references", () => {
     const result = isValidPlan(
       [

@@ -76,6 +76,75 @@ describe("resolveValue", () => {
     expect(resolveValue(template, outputs)).toBe("Temperature is 42 degrees");
   });
 
+  it("should resolve template string with object value using JSON.stringify", () => {
+    const outputs = new Map<string, unknown>([
+      ["step-1", { user: { name: "Alice", age: 30 } }],
+    ]);
+
+    const template = {
+      $fromTemplateString: "User data: {0}",
+      $values: [{ $fromStep: "step-1", $outputKey: "user" }],
+    };
+
+    expect(resolveValue(template, outputs)).toBe(
+      'User data: {"name":"Alice","age":30}',
+    );
+  });
+
+  it("should resolve template string with array value using JSON.stringify", () => {
+    const outputs = new Map<string, unknown>([
+      ["step-1", { tags: ["news", "tech", "ai"] }],
+    ]);
+
+    const template = {
+      $fromTemplateString: "Tags: {0}",
+      $values: [{ $fromStep: "step-1", $outputKey: "tags" }],
+    };
+
+    expect(resolveValue(template, outputs)).toBe('Tags: ["news","tech","ai"]');
+  });
+
+  it("should resolve template string with object inside array using JSON.stringify", () => {
+    const outputs = new Map<string, unknown>([
+      [
+        "step-1",
+        {
+          items: [
+            { name: "Alice", age: 30 },
+            { name: "Bob", age: 25 },
+          ],
+        },
+      ],
+    ]);
+
+    const template = {
+      $fromTemplateString: "First item: {0}",
+      $values: [{ $fromStep: "step-1", $outputKey: "items.0" }],
+    };
+
+    expect(resolveValue(template, outputs)).toBe(
+      'First item: {"name":"Alice","age":30}',
+    );
+  });
+
+  it("should resolve template string with mixed primitive and object values", () => {
+    const outputs = new Map<string, unknown>([
+      ["step-1", { name: "report", metadata: { pages: 5, format: "pdf" } }],
+    ]);
+
+    const template = {
+      $fromTemplateString: "File {0} has metadata: {1}",
+      $values: [
+        { $fromStep: "step-1", $outputKey: "name" },
+        { $fromStep: "step-1", $outputKey: "metadata" },
+      ],
+    };
+
+    expect(resolveValue(template, outputs)).toBe(
+      'File report has metadata: {"pages":5,"format":"pdf"}',
+    );
+  });
+
   it("should resolve array of values", () => {
     const outputs = new Map<string, unknown>([
       ["step-1", { a: 1 }],
