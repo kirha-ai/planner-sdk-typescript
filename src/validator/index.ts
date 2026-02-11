@@ -417,7 +417,7 @@ function getSchemaAtPath(
 ): z.ZodTypeAny | undefined {
   let current = unwrapSchema(schema);
 
-  for (const segment of path) {
+  for (const [i, segment] of path.entries()) {
     if (typeof segment === "number") {
       if (!(current instanceof z.ZodArray)) {
         return undefined;
@@ -429,6 +429,25 @@ function getSchemaAtPath(
     if (current instanceof z.ZodArray && isNumericString(segment)) {
       current = unwrapSchema(current.element as z.ZodTypeAny);
       continue;
+    }
+
+    if (current instanceof z.ZodUnion || current instanceof z.ZodXor) {
+      const remaining = path.slice(i);
+      const resolved = (current.options as z.ZodTypeAny[])
+        .map((option) => getSchemaAtPath(option, remaining))
+        .filter((s): s is z.ZodTypeAny => s !== undefined);
+
+      if (resolved.length === 0) {
+        return undefined;
+      }
+
+      if (resolved.length === 1) {
+        return resolved[0];
+      }
+
+      return z.union(
+        resolved as [z.ZodTypeAny, z.ZodTypeAny, ...z.ZodTypeAny[]],
+      );
     }
 
     if (!(current instanceof z.ZodObject)) {
@@ -498,7 +517,7 @@ function getTypeSet(schema: z.ZodTypeAny): Set<string> {
     }
   }
 
-  if (unwrapped instanceof z.ZodUnion) {
+  if (unwrapped instanceof z.ZodUnion || unwrapped instanceof z.ZodXor) {
     const types = new Set<string>();
     for (const option of unwrapped.options as z.ZodTypeAny[]) {
       for (const type of getTypeSet(option)) {
