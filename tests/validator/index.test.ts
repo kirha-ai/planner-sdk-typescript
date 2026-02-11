@@ -461,6 +461,230 @@ describe("isValidPlan", () => {
     expect(errorCodes).toContain("dependency_step_missing");
   });
 
+  it("resolves output path through anyOf with null (nullable union)", () => {
+    const coinTool: Tool = {
+      name: "getCoinInfo",
+      description: "Get coin info",
+      inputSchema:
+        '{"type":"object","properties":{"coinId":{"type":"string"}}}',
+      outputSchema: JSON.stringify({
+        type: "object",
+        properties: {
+          platformInfo: {
+            anyOf: [
+              {
+                type: "object",
+                properties: {
+                  contractAddress: { type: "string" },
+                  decimalPlaces: {
+                    anyOf: [{ type: "number" }, { type: "null" }],
+                  },
+                  platformName: { type: "string" },
+                },
+                required: ["platformName"],
+              },
+              { type: "null" },
+            ],
+          },
+        },
+        required: ["platformInfo"],
+      }),
+      handler: async () => ({}),
+    };
+
+    const result = isValidPlan(
+      [
+        {
+          stepId: "step-coin",
+          status: PlanStepStatus.Pending,
+          toolName: "getCoinInfo",
+          arguments: { coinId: "bitcoin" },
+        },
+        {
+          stepId: "step-use",
+          status: PlanStepStatus.Pending,
+          toolName: "sendEmail",
+          arguments: {
+            body: {
+              $fromStep: "step-coin",
+              $outputKey: "platformInfo.contractAddress",
+            },
+          },
+        },
+      ],
+      [...tools, coinTool],
+    );
+
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it("resolves output path through oneOf with null (nullable exclusive union)", () => {
+    const coinTool: Tool = {
+      name: "getCoinOneOf",
+      description: "Get coin info",
+      inputSchema:
+        '{"type":"object","properties":{"coinId":{"type":"string"}}}',
+      outputSchema: JSON.stringify({
+        type: "object",
+        properties: {
+          platformInfo: {
+            oneOf: [
+              {
+                type: "object",
+                properties: {
+                  contractAddress: { type: "string" },
+                },
+                required: ["contractAddress"],
+              },
+              { type: "null" },
+            ],
+          },
+        },
+        required: ["platformInfo"],
+      }),
+      handler: async () => ({}),
+    };
+
+    const result = isValidPlan(
+      [
+        {
+          stepId: "step-coin-oneof",
+          status: PlanStepStatus.Pending,
+          toolName: "getCoinOneOf",
+          arguments: { coinId: "bitcoin" },
+        },
+        {
+          stepId: "step-use-oneof",
+          status: PlanStepStatus.Pending,
+          toolName: "sendEmail",
+          arguments: {
+            body: {
+              $fromStep: "step-coin-oneof",
+              $outputKey: "platformInfo.contractAddress",
+            },
+          },
+        },
+      ],
+      [...tools, coinTool],
+    );
+
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it("resolves output path through multi-branch anyOf union", () => {
+    const multiUnionTool: Tool = {
+      name: "getMultiResult",
+      description: "Get result with multiple union branches",
+      inputSchema: '{"type":"object","properties":{}}',
+      outputSchema: JSON.stringify({
+        type: "object",
+        properties: {
+          result: {
+            anyOf: [
+              {
+                type: "object",
+                properties: { value: { type: "string" } },
+                required: ["value"],
+              },
+              {
+                type: "object",
+                properties: { value: { type: "number" } },
+                required: ["value"],
+              },
+            ],
+          },
+        },
+        required: ["result"],
+      }),
+      handler: async () => ({}),
+    };
+
+    const result = isValidPlan(
+      [
+        {
+          stepId: "step-multi",
+          status: PlanStepStatus.Pending,
+          toolName: "getMultiResult",
+          arguments: {},
+        },
+        {
+          stepId: "step-use-multi",
+          status: PlanStepStatus.Pending,
+          toolName: "sendEmail",
+          arguments: {
+            body: {
+              $fromTemplateString: "Result: {0}",
+              $values: [
+                { $fromStep: "step-multi", $outputKey: "result.value" },
+              ],
+            },
+          },
+        },
+      ],
+      [...tools, multiUnionTool],
+    );
+
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it("resolves output path present in only one branch of anyOf union", () => {
+    const partialUnionTool: Tool = {
+      name: "getPartialResult",
+      description: "Get result where branches differ",
+      inputSchema: '{"type":"object","properties":{}}',
+      outputSchema: JSON.stringify({
+        type: "object",
+        properties: {
+          result: {
+            anyOf: [
+              {
+                type: "object",
+                properties: { address: { type: "string" } },
+                required: ["address"],
+              },
+              {
+                type: "object",
+                properties: { code: { type: "number" } },
+                required: ["code"],
+              },
+            ],
+          },
+        },
+        required: ["result"],
+      }),
+      handler: async () => ({}),
+    };
+
+    const result = isValidPlan(
+      [
+        {
+          stepId: "step-partial",
+          status: PlanStepStatus.Pending,
+          toolName: "getPartialResult",
+          arguments: {},
+        },
+        {
+          stepId: "step-use-partial",
+          status: PlanStepStatus.Pending,
+          toolName: "sendEmail",
+          arguments: {
+            body: {
+              $fromStep: "step-partial",
+              $outputKey: "result.address",
+            },
+          },
+        },
+      ],
+      [...tools, partialUnionTool],
+    );
+
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
   it("validates forward step references", () => {
     const result = isValidPlan(
       [
@@ -483,6 +707,163 @@ describe("isValidPlan", () => {
     );
 
     expect(result.valid).toBe(true);
+  });
+
+  it("accepts enum output as string type", () => {
+    const enumTool: Tool = {
+      name: "getStatus",
+      description: "Get status",
+      inputSchema: '{"type":"object","properties":{}}',
+      outputSchema: JSON.stringify({
+        type: "object",
+        properties: {
+          status: { type: "string", enum: ["active", "inactive"] },
+        },
+        required: ["status"],
+      }),
+      handler: async () => ({ status: "active" }),
+    };
+
+    const result = isValidPlan(
+      [
+        {
+          stepId: "step-enum",
+          status: PlanStepStatus.Pending,
+          toolName: "getStatus",
+          arguments: {},
+        },
+        {
+          stepId: "step-use-enum",
+          status: PlanStepStatus.Pending,
+          toolName: "sendEmail",
+          arguments: {
+            body: { $fromStep: "step-enum", $outputKey: "status" },
+          },
+        },
+      ],
+      [...tools, enumTool],
+    );
+
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it("accepts const/literal output matching expected type", () => {
+    const constTool: Tool = {
+      name: "getConst",
+      description: "Get a constant",
+      inputSchema: '{"type":"object","properties":{}}',
+      outputSchema: JSON.stringify({
+        type: "object",
+        properties: {
+          label: { const: "fixed-label" },
+          code: { const: 42 },
+        },
+        required: ["label", "code"],
+      }),
+      handler: async () => ({ label: "fixed-label", code: 42 }),
+    };
+
+    const stringResult = isValidPlan(
+      [
+        {
+          stepId: "step-const",
+          status: PlanStepStatus.Pending,
+          toolName: "getConst",
+          arguments: {},
+        },
+        {
+          stepId: "step-use-label",
+          status: PlanStepStatus.Pending,
+          toolName: "sendEmail",
+          arguments: {
+            body: { $fromStep: "step-const", $outputKey: "label" },
+          },
+        },
+      ],
+      [...tools, constTool],
+    );
+
+    expect(stringResult.valid).toBe(true);
+    expect(stringResult.errors).toHaveLength(0);
+
+    const numberResult = isValidPlan(
+      [
+        {
+          stepId: "step-const",
+          status: PlanStepStatus.Pending,
+          toolName: "getConst",
+          arguments: {},
+        },
+        {
+          stepId: "step-use-code",
+          status: PlanStepStatus.Pending,
+          toolName: "sendEmail",
+          arguments: {
+            body: { $fromStep: "step-const", $outputKey: "code" },
+          },
+        },
+      ],
+      [...tools, constTool],
+    );
+
+    expect(numberResult.valid).toBe(false);
+    expect(numberResult.errors[0]?.code).toBe("type_mismatch");
+  });
+
+  it("accepts tuple output as array type", () => {
+    const tupleTool: Tool = {
+      name: "getCoords",
+      description: "Get coordinates",
+      inputSchema: '{"type":"object","properties":{}}',
+      outputSchema: JSON.stringify({
+        type: "object",
+        properties: {
+          coords: {
+            type: "array",
+            prefixItems: [{ type: "number" }, { type: "number" }],
+          },
+        },
+        required: ["coords"],
+      }),
+      handler: async () => ({ coords: [1, 2] }),
+    };
+
+    const arrayInputTool: Tool = {
+      name: "processArray",
+      description: "Process array",
+      inputSchema: JSON.stringify({
+        type: "object",
+        properties: {
+          items: { type: "array", items: { type: "number" } },
+        },
+      }),
+      outputSchema: '{"type":"object","properties":{}}',
+      handler: async () => ({}),
+    };
+
+    const result = isValidPlan(
+      [
+        {
+          stepId: "step-tuple",
+          status: PlanStepStatus.Pending,
+          toolName: "getCoords",
+          arguments: {},
+        },
+        {
+          stepId: "step-use-tuple",
+          status: PlanStepStatus.Pending,
+          toolName: "processArray",
+          arguments: {
+            items: { $fromStep: "step-tuple", $outputKey: "coords" },
+          },
+        },
+      ],
+      [...tools, tupleTool, arrayInputTool],
+    );
+
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
   });
 
   it("validates union types in schemas", () => {
