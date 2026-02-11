@@ -19,44 +19,6 @@ import {
 
 type ToolSchemas = { input: z.ZodTypeAny; output: z.ZodTypeAny };
 
-interface ErrorContext {
-  stepId: string;
-  toolName: string;
-  argumentPath: string;
-  fromStepId?: string;
-  outputPath?: string;
-}
-
-function createErrorContext(
-  step: PlanStep,
-  argumentPath: Path,
-  reference?: DependencyReference,
-): ErrorContext {
-  return {
-    stepId: step.stepId,
-    toolName: step.toolName,
-    argumentPath: formatPath(argumentPath),
-    ...(reference && {
-      fromStepId: reference.$fromStep,
-      outputPath: reference.$outputKey,
-    }),
-  };
-}
-
-function createValidationError(
-  code: PlanValidationError["code"],
-  message: string,
-  context: ErrorContext,
-  extra?: { expectedType?: string; actualType?: string },
-): PlanValidationError {
-  return {
-    code,
-    message,
-    ...context,
-    ...extra,
-  };
-}
-
 export function isValidPlan(
   steps: PlanStep[],
   tools: Tool[],
@@ -67,14 +29,16 @@ export function isValidPlan(
   const stepsById = new Map(steps.map((step) => [step.stepId, step]));
 
   for (const tool of tools) {
-    const { schemas, errorDetail } = parseToolSchemas(tool);
-    if (schemas) {
-      schemasByTool.set(tool.name, schemas);
-    } else {
-      const detail = errorDetail ? `: ${errorDetail}` : "";
+    try {
+      schemasByTool.set(tool.name, {
+        input: parseSchema(tool.inputSchema),
+        output: parseSchema(tool.outputSchema),
+      });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
       errors.push({
         code: "schema_parse_error",
-        message: `Failed to parse input/output schema for tool "${tool.name}"${detail}`,
+        message: `Failed to parse input/output schema for tool "${tool.name}": ${detail}`,
         toolName: tool.name,
       });
     }
@@ -106,48 +70,48 @@ export function isValidPlan(
     }
 
     traverseReferences(step.arguments, {
-      onDependency: (ref, path) => {
-        validateDependencyReference({
-          reference: ref,
-          argumentPath: path,
+      onDependency: (ref, inputPath) => {
+        const formattedInputPath = formatPath(inputPath);
+        const expectedSchema = getSchemaAtPath(schemas.input, inputPath);
+
+        if (!expectedSchema) {
+          errors.push({
+            code: "input_key_missing",
+            message: `Input path "${formattedInputPath}" not found on tool "${step.toolName}"`,
+            stepId: step.stepId,
+            toolName: step.toolName,
+            argumentPath: formattedInputPath,
+            fromStepId: ref.$fromStep,
+            outputPath: ref.$outputKey,
+          });
+          return;
+        }
+
+        validateOutputReference(
+          ref,
+          formattedInputPath,
+          expectedSchema,
           step,
-          inputSchema: schemas.input,
           stepsById,
           schemasByTool,
           errors,
-        });
+        );
       },
-      onTemplate: (ref, path) => {
-        validateStringTemplateReference({
-          reference: ref,
-          argumentPath: path,
+      onTemplate: (ref, inputPath) => {
+        validateStringTemplateReference(
+          ref,
+          inputPath,
           step,
-          inputSchema: schemas.input,
+          schemas.input,
           stepsById,
           schemasByTool,
           errors,
-        });
+        );
       },
     });
   }
 
   return { valid: errors.length === 0, errors };
-}
-
-interface ParseToolSchemasResult {
-  schemas: ToolSchemas | null;
-  errorDetail?: string;
-}
-
-function parseToolSchemas(tool: Tool): ParseToolSchemasResult {
-  try {
-    const input = parseSchema(tool.inputSchema);
-    const output = parseSchema(tool.outputSchema);
-    return { schemas: { input, output } };
-  } catch (error) {
-    const errorDetail = error instanceof Error ? error.message : String(error);
-    return { schemas: null, errorDetail };
-  }
 }
 
 function parseSchema(rawSchema: string): z.ZodTypeAny {
@@ -159,235 +123,100 @@ function parseSchema(rawSchema: string): z.ZodTypeAny {
   }
 }
 
-function getExpectedSchemaOrError(
-  inputSchema: z.ZodTypeAny,
-  argumentPath: Path,
+function validateOutputReference(
+  reference: DependencyReference,
+  inputPath: string,
+  expectedSchema: z.ZodTypeAny,
   step: PlanStep,
-  reference: DependencyReference | undefined,
-  errors: PlanValidationError[],
-): z.ZodTypeAny | null {
-  const expectedSchema = getSchemaAtPath(inputSchema, argumentPath);
-
-  if (!expectedSchema) {
-    const context = createErrorContext(step, argumentPath, reference);
-    errors.push(
-      createValidationError(
-        "input_key_missing",
-        `Input path "${context.argumentPath}" not found on tool "${step.toolName}"`,
-        context,
-      ),
-    );
-    return null;
-  }
-
-  return expectedSchema;
-}
-
-function validateDependencyReference({
-  reference,
-  argumentPath,
-  step,
-  inputSchema,
-  stepsById,
-  schemasByTool,
-  errors,
-}: {
-  reference: DependencyReference;
-  argumentPath: Path;
-  step: PlanStep;
-  inputSchema: z.ZodTypeAny;
-  stepsById: Map<string, PlanStep>;
-  schemasByTool: Map<string, ToolSchemas>;
-  errors: PlanValidationError[];
-}): void {
-  const expectedSchema = getExpectedSchemaOrError(
-    inputSchema,
-    argumentPath,
-    step,
-    reference,
-    errors,
-  );
-
-  if (expectedSchema) {
-    validateOutputReference({
-      reference,
-      argumentPath,
-      expectedSchema,
-      step,
-      stepsById,
-      schemasByTool,
-      errors,
-    });
-  }
-}
-
-function resolveSourceStep(
-  reference: DependencyReference,
   stepsById: Map<string, PlanStep>,
-  context: ErrorContext,
-  errors: PlanValidationError[],
-): PlanStep | null {
-  const sourceStep = stepsById.get(reference.$fromStep);
-
-  if (!sourceStep) {
-    errors.push(
-      createValidationError(
-        "dependency_step_missing",
-        `Step "${reference.$fromStep}" not found`,
-        context,
-      ),
-    );
-    return null;
-  }
-
-  return sourceStep;
-}
-
-function resolveSourceSchemas(
-  sourceStep: PlanStep,
   schemasByTool: Map<string, ToolSchemas>,
-  context: ErrorContext,
   errors: PlanValidationError[],
-): ToolSchemas | null {
-  const sourceSchemas = schemasByTool.get(sourceStep.toolName);
+): void {
+  const baseContext = {
+    stepId: step.stepId,
+    toolName: step.toolName,
+    argumentPath: inputPath,
+    fromStepId: reference.$fromStep,
+    outputPath: reference.$outputKey,
+  };
 
-  if (!sourceSchemas) {
-    errors.push(
-      createValidationError(
-        "schema_parse_error",
-        `Output schema for tool "${sourceStep.toolName}" could not be parsed`,
-        context,
-      ),
-    );
-    return null;
+  const sourceStep = stepsById.get(reference.$fromStep);
+  if (!sourceStep) {
+    errors.push({
+      code: "dependency_step_missing",
+      message: `Step "${reference.$fromStep}" not found`,
+      ...baseContext,
+    });
+    return;
   }
 
-  return sourceSchemas;
-}
+  const sourceSchemas = schemasByTool.get(sourceStep.toolName);
+  if (!sourceSchemas) {
+    errors.push({
+      code: "schema_parse_error",
+      message: `Output schema for tool "${sourceStep.toolName}" could not be parsed`,
+      ...baseContext,
+    });
+    return;
+  }
 
-function resolveOutputSchema(
-  reference: DependencyReference,
-  sourceSchemas: ToolSchemas,
-  sourceStep: PlanStep,
-  context: ErrorContext,
-  errors: PlanValidationError[],
-): z.ZodTypeAny | null {
   const outputSchema = getSchemaAtPath(
     sourceSchemas.output,
     parsePath(reference.$outputKey),
   );
-
   if (!outputSchema) {
-    errors.push(
-      createValidationError(
-        "output_key_missing",
-        `Output key "${reference.$outputKey}" not found on tool "${sourceStep.toolName}"`,
-        context,
-      ),
-    );
-    return null;
-  }
-
-  return outputSchema;
-}
-
-function validateOutputReference({
-  reference,
-  argumentPath,
-  expectedSchema,
-  step,
-  stepsById,
-  schemasByTool,
-  errors,
-}: {
-  reference: DependencyReference;
-  argumentPath: Path;
-  expectedSchema: z.ZodTypeAny;
-  step: PlanStep;
-  stepsById: Map<string, PlanStep>;
-  schemasByTool: Map<string, ToolSchemas>;
-  errors: PlanValidationError[];
-}): void {
-  const context = createErrorContext(step, argumentPath, reference);
-
-  const sourceStep = resolveSourceStep(reference, stepsById, context, errors);
-  if (!sourceStep) return;
-
-  const sourceSchemas = resolveSourceSchemas(
-    sourceStep,
-    schemasByTool,
-    context,
-    errors,
-  );
-  if (!sourceSchemas) return;
-
-  const outputSchema = resolveOutputSchema(
-    reference,
-    sourceSchemas,
-    sourceStep,
-    context,
-    errors,
-  );
-  if (!outputSchema) return;
-
-  if (!isSchemaCompatible(expectedSchema, outputSchema)) {
-    errors.push(
-      createValidationError(
-        "type_mismatch",
-        `Type mismatch for "${context.argumentPath}"`,
-        context,
-        {
-          expectedType: describeSchemaType(expectedSchema),
-          actualType: describeSchemaType(outputSchema),
-        },
-      ),
-    );
-  }
-}
-
-function validateStringTemplateReference({
-  reference,
-  argumentPath,
-  step,
-  inputSchema,
-  stepsById,
-  schemasByTool,
-  errors,
-}: {
-  reference: StringTemplateReference;
-  argumentPath: Path;
-  step: PlanStep;
-  inputSchema: z.ZodTypeAny;
-  stepsById: Map<string, PlanStep>;
-  schemasByTool: Map<string, ToolSchemas>;
-  errors: PlanValidationError[];
-}): void {
-  const expectedSchema = getExpectedSchemaOrError(
-    inputSchema,
-    argumentPath,
-    step,
-    undefined,
-    errors,
-  );
-
-  if (!expectedSchema) {
+    errors.push({
+      code: "output_key_missing",
+      message: `Output key "${reference.$outputKey}" not found on tool "${sourceStep.toolName}"`,
+      ...baseContext,
+    });
     return;
   }
 
-  const context = createErrorContext(step, argumentPath);
+  if (!isSchemaCompatible(expectedSchema, outputSchema)) {
+    errors.push({
+      code: "type_mismatch",
+      message: `Type mismatch for "${inputPath}"`,
+      ...baseContext,
+      expectedType: describeSchemaType(expectedSchema),
+      actualType: describeSchemaType(outputSchema),
+    });
+  }
+}
+
+function validateStringTemplateReference(
+  reference: StringTemplateReference,
+  inputPath: Path,
+  step: PlanStep,
+  inputSchema: z.ZodTypeAny,
+  stepsById: Map<string, PlanStep>,
+  schemasByTool: Map<string, ToolSchemas>,
+  errors: PlanValidationError[],
+): void {
+  const formattedInputPath = formatPath(inputPath);
+  const expectedSchema = getSchemaAtPath(inputSchema, inputPath);
+
+  if (!expectedSchema) {
+    errors.push({
+      code: "input_key_missing",
+      message: `Input path "${formattedInputPath}" not found on tool "${step.toolName}"`,
+      stepId: step.stepId,
+      toolName: step.toolName,
+      argumentPath: formattedInputPath,
+    });
+    return;
+  }
 
   if (!isSchemaCompatible(expectedSchema, z.string())) {
-    errors.push(
-      createValidationError(
-        "type_mismatch",
-        `Type mismatch for "${context.argumentPath}"`,
-        context,
-        {
-          expectedType: describeSchemaType(expectedSchema),
-          actualType: "string",
-        },
-      ),
-    );
+    errors.push({
+      code: "type_mismatch",
+      message: `Type mismatch for "${formattedInputPath}"`,
+      stepId: step.stepId,
+      toolName: step.toolName,
+      argumentPath: formattedInputPath,
+      expectedType: describeSchemaType(expectedSchema),
+      actualType: "string",
+    });
   }
 
   const stringCoercible = z.union([
@@ -399,15 +228,15 @@ function validateStringTemplateReference({
   ]);
 
   for (const ref of reference.$values) {
-    validateOutputReference({
-      reference: ref,
-      argumentPath,
-      expectedSchema: stringCoercible,
+    validateOutputReference(
+      ref,
+      formattedInputPath,
+      stringCoercible,
       step,
       stepsById,
       schemasByTool,
       errors,
-    });
+    );
   }
 }
 
@@ -415,54 +244,60 @@ function getSchemaAtPath(
   schema: z.ZodTypeAny,
   path: Array<string | number>,
 ): z.ZodTypeAny | undefined {
-  let current = unwrapSchema(schema);
+  const unwrapped = unwrapSchema(schema);
 
-  for (const [i, segment] of path.entries()) {
-    if (typeof segment === "number") {
-      if (!(current instanceof z.ZodArray)) {
-        return undefined;
-      }
-      current = unwrapSchema(current.element as z.ZodTypeAny);
-      continue;
-    }
-
-    if (current instanceof z.ZodArray && isNumericString(segment)) {
-      current = unwrapSchema(current.element as z.ZodTypeAny);
-      continue;
-    }
-
-    if (current instanceof z.ZodUnion || current instanceof z.ZodXor) {
-      const remaining = path.slice(i);
-      const resolved = (current.options as z.ZodTypeAny[])
-        .map((option) => getSchemaAtPath(option, remaining))
-        .filter((s): s is z.ZodTypeAny => s !== undefined);
-
-      if (resolved.length === 0) {
-        return undefined;
-      }
-
-      if (resolved.length === 1) {
-        return resolved[0];
-      }
-
-      return z.union(
-        resolved as [z.ZodTypeAny, z.ZodTypeAny, ...z.ZodTypeAny[]],
-      );
-    }
-
-    if (!(current instanceof z.ZodObject)) {
-      return undefined;
-    }
-
-    const shape = current.shape as Record<string, z.ZodTypeAny>;
-    const child = shape[segment];
-    if (!child) {
-      return undefined;
-    }
-    current = unwrapSchema(child);
+  if (path.length === 0) {
+    return unwrapped;
   }
 
-  return current;
+  if (unwrapped instanceof z.ZodUnion || unwrapped instanceof z.ZodXor) {
+    const resolvedOptions = (unwrapped.options as z.ZodTypeAny[])
+      .map((option) => getSchemaAtPath(option, path))
+      .filter((resolved): resolved is z.ZodTypeAny => resolved !== undefined);
+
+    if (resolvedOptions.length === 0) {
+      return undefined;
+    }
+
+    if (resolvedOptions.length === 1) {
+      return resolvedOptions[0];
+    }
+
+    return z.union(
+      resolvedOptions as [z.ZodTypeAny, z.ZodTypeAny, ...z.ZodTypeAny[]],
+    );
+  }
+
+  const segment = path[0];
+  if (segment === undefined) {
+    return unwrapped;
+  }
+
+  const remainingPath = path.slice(1);
+
+  if (typeof segment === "number") {
+    if (!(unwrapped instanceof z.ZodArray)) {
+      return undefined;
+    }
+
+    return getSchemaAtPath(unwrapped.element as z.ZodTypeAny, remainingPath);
+  }
+
+  if (unwrapped instanceof z.ZodArray && isNumericString(segment)) {
+    return getSchemaAtPath(unwrapped.element as z.ZodTypeAny, remainingPath);
+  }
+
+  if (!(unwrapped instanceof z.ZodObject)) {
+    return undefined;
+  }
+
+  const shape = unwrapped.shape as Record<string, z.ZodTypeAny>;
+  const childSchema = shape[segment];
+  if (!childSchema) {
+    return undefined;
+  }
+
+  return getSchemaAtPath(childSchema, remainingPath);
 }
 
 function unwrapSchema(schema: z.ZodTypeAny): z.ZodTypeAny {
@@ -471,7 +306,7 @@ function unwrapSchema(schema: z.ZodTypeAny): z.ZodTypeAny {
     schema instanceof z.ZodDefault ||
     schema instanceof z.ZodNullable
   ) {
-    return unwrapSchema(schema._def.innerType as z.ZodTypeAny);
+    return unwrapSchema(schema.def.innerType as z.ZodTypeAny);
   }
 
   return schema;
@@ -481,10 +316,84 @@ function isSchemaCompatible(
   expected: z.ZodTypeAny,
   actual: z.ZodTypeAny,
 ): boolean {
+  const expectedUnwrapped = unwrapSchema(expected);
+  const actualUnwrapped = unwrapSchema(actual);
+
+  if (expectedUnwrapped instanceof z.ZodAny) {
+    return true;
+  }
+
+  if (
+    expectedUnwrapped instanceof z.ZodUnion ||
+    expectedUnwrapped instanceof z.ZodXor
+  ) {
+    return (expectedUnwrapped.options as z.ZodTypeAny[]).some((option) =>
+      isSchemaCompatible(option, actualUnwrapped),
+    );
+  }
+
+  if (
+    actualUnwrapped instanceof z.ZodUnion ||
+    actualUnwrapped instanceof z.ZodXor
+  ) {
+    return (actualUnwrapped.options as z.ZodTypeAny[]).some((option) =>
+      isSchemaCompatible(expectedUnwrapped, option),
+    );
+  }
+
+  if (
+    expectedUnwrapped instanceof z.ZodArray &&
+    actualUnwrapped instanceof z.ZodArray
+  ) {
+    return isSchemaCompatible(
+      expectedUnwrapped.element as z.ZodTypeAny,
+      actualUnwrapped.element as z.ZodTypeAny,
+    );
+  }
+
+  if (
+    expectedUnwrapped instanceof z.ZodObject &&
+    actualUnwrapped instanceof z.ZodObject
+  ) {
+    const expectedShape = expectedUnwrapped.shape as Record<
+      string,
+      z.ZodTypeAny
+    >;
+    const actualShape = actualUnwrapped.shape as Record<string, z.ZodTypeAny>;
+
+    for (const [key, expectedFieldSchema] of Object.entries(expectedShape)) {
+      if (isOptionalField(expectedFieldSchema)) {
+        continue;
+      }
+
+      const actualFieldSchema = actualShape[key];
+      if (!actualFieldSchema) {
+        return false;
+      }
+
+      if (!isSchemaCompatible(expectedFieldSchema, actualFieldSchema)) {
+        return false;
+      }
+    }
+
+    for (const [key, actualFieldSchema] of Object.entries(actualShape)) {
+      const expectedFieldSchema = expectedShape[key];
+      if (!expectedFieldSchema) {
+        continue;
+      }
+
+      if (!isSchemaCompatible(expectedFieldSchema, actualFieldSchema)) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
   const expectedTypes = getTypeSet(expected);
   const actualTypes = getTypeSet(actual);
 
-  if (expectedTypes.has("any")) {
+  if (expectedTypes.has("any") || actualTypes.has("unknown")) {
     return true;
   }
 
@@ -497,6 +406,10 @@ function isSchemaCompatible(
   return false;
 }
 
+function isOptionalField(schema: z.ZodTypeAny): boolean {
+  return schema instanceof z.ZodOptional || schema instanceof z.ZodDefault;
+}
+
 const KNOWN_ZOD_TYPES: Array<[new (...args: never[]) => z.ZodTypeAny, string]> =
   [
     [z.ZodAny, "any"],
@@ -505,8 +418,16 @@ const KNOWN_ZOD_TYPES: Array<[new (...args: never[]) => z.ZodTypeAny, string]> =
     [z.ZodBoolean, "boolean"],
     [z.ZodNull, "null"],
     [z.ZodArray, "array"],
+    [z.ZodTuple, "array"],
     [z.ZodObject, "object"],
+    [z.ZodEnum, "string"],
   ];
+
+const LITERAL_TYPE_MAP: Record<string, string> = {
+  string: "string",
+  number: "number",
+  boolean: "boolean",
+};
 
 function getTypeSet(schema: z.ZodTypeAny): Set<string> {
   const unwrapped = unwrapSchema(schema);
@@ -515,6 +436,11 @@ function getTypeSet(schema: z.ZodTypeAny): Set<string> {
     if (unwrapped instanceof ZodClass) {
       return new Set([typeName]);
     }
+  }
+
+  if (unwrapped instanceof z.ZodLiteral) {
+    const type = LITERAL_TYPE_MAP[typeof unwrapped.value];
+    return new Set([type ?? "unknown"]);
   }
 
   if (unwrapped instanceof z.ZodUnion || unwrapped instanceof z.ZodXor) {

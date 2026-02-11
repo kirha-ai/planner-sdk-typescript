@@ -709,6 +709,163 @@ describe("isValidPlan", () => {
     expect(result.valid).toBe(true);
   });
 
+  it("accepts enum output as string type", () => {
+    const enumTool: Tool = {
+      name: "getStatus",
+      description: "Get status",
+      inputSchema: '{"type":"object","properties":{}}',
+      outputSchema: JSON.stringify({
+        type: "object",
+        properties: {
+          status: { type: "string", enum: ["active", "inactive"] },
+        },
+        required: ["status"],
+      }),
+      handler: async () => ({ status: "active" }),
+    };
+
+    const result = isValidPlan(
+      [
+        {
+          stepId: "step-enum",
+          status: PlanStepStatus.Pending,
+          toolName: "getStatus",
+          arguments: {},
+        },
+        {
+          stepId: "step-use-enum",
+          status: PlanStepStatus.Pending,
+          toolName: "sendEmail",
+          arguments: {
+            body: { $fromStep: "step-enum", $outputKey: "status" },
+          },
+        },
+      ],
+      [...tools, enumTool],
+    );
+
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it("accepts const/literal output matching expected type", () => {
+    const constTool: Tool = {
+      name: "getConst",
+      description: "Get a constant",
+      inputSchema: '{"type":"object","properties":{}}',
+      outputSchema: JSON.stringify({
+        type: "object",
+        properties: {
+          label: { const: "fixed-label" },
+          code: { const: 42 },
+        },
+        required: ["label", "code"],
+      }),
+      handler: async () => ({ label: "fixed-label", code: 42 }),
+    };
+
+    const stringResult = isValidPlan(
+      [
+        {
+          stepId: "step-const",
+          status: PlanStepStatus.Pending,
+          toolName: "getConst",
+          arguments: {},
+        },
+        {
+          stepId: "step-use-label",
+          status: PlanStepStatus.Pending,
+          toolName: "sendEmail",
+          arguments: {
+            body: { $fromStep: "step-const", $outputKey: "label" },
+          },
+        },
+      ],
+      [...tools, constTool],
+    );
+
+    expect(stringResult.valid).toBe(true);
+    expect(stringResult.errors).toHaveLength(0);
+
+    const numberResult = isValidPlan(
+      [
+        {
+          stepId: "step-const",
+          status: PlanStepStatus.Pending,
+          toolName: "getConst",
+          arguments: {},
+        },
+        {
+          stepId: "step-use-code",
+          status: PlanStepStatus.Pending,
+          toolName: "sendEmail",
+          arguments: {
+            body: { $fromStep: "step-const", $outputKey: "code" },
+          },
+        },
+      ],
+      [...tools, constTool],
+    );
+
+    expect(numberResult.valid).toBe(false);
+    expect(numberResult.errors[0]?.code).toBe("type_mismatch");
+  });
+
+  it("accepts tuple output as array type", () => {
+    const tupleTool: Tool = {
+      name: "getCoords",
+      description: "Get coordinates",
+      inputSchema: '{"type":"object","properties":{}}',
+      outputSchema: JSON.stringify({
+        type: "object",
+        properties: {
+          coords: {
+            type: "array",
+            prefixItems: [{ type: "number" }, { type: "number" }],
+          },
+        },
+        required: ["coords"],
+      }),
+      handler: async () => ({ coords: [1, 2] }),
+    };
+
+    const arrayInputTool: Tool = {
+      name: "processArray",
+      description: "Process array",
+      inputSchema: JSON.stringify({
+        type: "object",
+        properties: {
+          items: { type: "array", items: { type: "number" } },
+        },
+      }),
+      outputSchema: '{"type":"object","properties":{}}',
+      handler: async () => ({}),
+    };
+
+    const result = isValidPlan(
+      [
+        {
+          stepId: "step-tuple",
+          status: PlanStepStatus.Pending,
+          toolName: "getCoords",
+          arguments: {},
+        },
+        {
+          stepId: "step-use-tuple",
+          status: PlanStepStatus.Pending,
+          toolName: "processArray",
+          arguments: {
+            items: { $fromStep: "step-tuple", $outputKey: "coords" },
+          },
+        },
+      ],
+      [...tools, tupleTool, arrayInputTool],
+    );
+
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
   it("validates union types in schemas", () => {
     const unionTool: Tool = {
       name: "processValue",
