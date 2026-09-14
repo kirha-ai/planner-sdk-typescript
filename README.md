@@ -6,7 +6,7 @@ Compatible with any OpenAI chat completion compatible endpoint.
 
 ## Overview
 
-This SDK is designed to work with [kirha/planner](https://huggingface.co/kirha/planner), a Qwen3 8b model fine-tuned to generate complete DAG (Directed Acyclic Graph) execution plans from natural language queries.
+This SDK is designed to work with [kirha/planner](https://huggingface.co/kirha/planner), a Qwen3.5 model fine-tuned to generate complete DAG (Directed Acyclic Graph) execution plans from natural language queries.
 
 Instead of step-by-step function calling, the model outputs a full execution plan in one pass. This SDK handles:
 
@@ -113,6 +113,16 @@ const plan = await planner.generatePlan(query: string, {
 });
 ```
 
+#### System prompt
+
+`generatePlan` sends a system message made of the optional `instructions` followed by the tool catalog in the format the model was trained on, then the query as the user message. Schemas are compressed: `additionalProperties` and `required` are dropped, `{ type: "string" }` becomes `"string"`, and the `context` input field is removed.
+
+```
+<tools>[{name:'get_weather',description:'Get current weather for a city',input:{city:{type:'string',description:'City name'}},output:{temperature:'number',condition:'string'}}]</tools>
+```
+
+Use `buildSystemPrompt(tools, instructions?)` to get that exact message when calling the model with your own client, and `parseModelOutput(raw)` to parse the completion.
+
 ### `Plan`
 
 Represents a generated execution plan.
@@ -159,7 +169,7 @@ The SDK parses the model's raw output into a structured, executable plan.
 
 ### Model Output Format
 
-The model generates a `<think>` block for reasoning followed by a `<plan>` block:
+The model generates a `<think>` block for reasoning followed by a `<plan>` block. Some inference servers (vLLM with the Qwen chat template) open the think block in the prompt, so the completion may start directly with the reasoning and `</think>`; the parser handles both cases.
 
 ```
 <think>

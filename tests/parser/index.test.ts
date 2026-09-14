@@ -549,4 +549,26 @@ describe("parseModelOutput", () => {
     expect(think).toBeUndefined();
     expect(plan).toBeUndefined();
   });
+
+  it("should parse think when the opening tag was consumed by the chat template", () => {
+    const raw = `The user wants the weather.
+I will call searchWeb.
+</think>
+
+<plan>[{"toolName":"searchWeb","arguments":{"query":"weather"}}]</plan>`;
+
+    const { think, plan } = parseModelOutput(raw);
+
+    expect(think).toBe("The user wants the weather.\nI will call searchWeb.");
+    expect(plan).toHaveLength(1);
+  });
+
+  it("should ignore a stray opening tag located after the closing tag", () => {
+    const raw = `reasoning</think><plan>[]</plan><think>`;
+
+    const { think, plan } = parseModelOutput(raw);
+
+    expect(think).toBe("reasoning");
+    expect(plan).toEqual([]);
+  });
 });

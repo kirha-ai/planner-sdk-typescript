@@ -58,13 +58,26 @@ const ToolStepSchema = z
 const PlanSchema = z.array(ToolStepSchema);
 
 export function parseModelOutput(raw: string) {
-  const thinkMatch = raw.match(/<think>([\s\S]*?)<\/think>/);
   const planMatch = raw.match(/<plan>([\s\S]*?)<\/plan>/);
-
-  const think = thinkMatch?.[1] ? thinkMatch[1].trim() : undefined;
   const plan = planMatch?.[1] ? parsePlanSteps(planMatch[1]) : undefined;
 
-  return { think, plan };
+  return { think: parseThink(raw), plan };
+}
+
+// vLLM chat templates open the think block in the prompt, so the completion may start without "<think>"
+function parseThink(raw: string): string | undefined {
+  const end = raw.indexOf("</think>");
+
+  if (end === -1) {
+    return undefined;
+  }
+
+  const start = raw.indexOf("<think>");
+  const think = raw
+    .slice(start === -1 || start > end ? 0 : start + "<think>".length, end)
+    .trim();
+
+  return think || undefined;
 }
 
 export function parsePlanSteps(rawSteps: string): PlanStep[] {

@@ -1,8 +1,10 @@
 import OpenAI from "openai";
-import json5 from "json5";
 import { parseModelOutput, parsePlanSteps } from "./parser";
 import { executePlan, type ExecuteOptions } from "./executor";
+import { buildSystemPrompt } from "./prompt";
 import type { PlanStep, Tool, StepResult } from "./types";
+
+type ReasoningMessage = { reasoning_content?: string; reasoning?: string };
 
 export type {
   Tool,
@@ -16,7 +18,8 @@ export type { ExecuteOptions } from "./executor";
 
 export { isValidPlan } from "./validator";
 
-export { parsePlanSteps };
+export { parsePlanSteps, parseModelOutput };
+export { buildSystemPrompt };
 
 export const LATEST_MODEL_NAME = "kirha/planner";
 
@@ -65,20 +68,16 @@ export class Planner {
     query: string,
     options: PlanOptions,
   ): Promise<Plan | undefined> {
-    const tools = json5.stringify(options.tools);
-    const additionalInstructions = options.instructions
-      ? `# Instructions\n${options.instructions}\n`
-      : "";
-
-    const systemPrompt = `${additionalInstructions}# Available tools\n<tools>${tools}</tools>`;
-
     const response = await this.openai.chat.completions.create({
       model: this.model,
       messages: [
-        { role: "system", content: systemPrompt },
+        {
+          role: "system",
+          content: buildSystemPrompt(options.tools, options.instructions),
+        },
         { role: "user", content: query },
       ],
-      temperature: options.temperature ?? 0.3,
+      temperature: options.temperature ?? 0,
       max_tokens: options.maxTokens ?? 10_000,
     });
 
@@ -94,8 +93,10 @@ export class Planner {
       throw new Error("No plan generated");
     }
 
+    const message = choice.message as ReasoningMessage;
+    const reasoning = message.reasoning_content ?? message.reasoning;
     const { think, plan } = parseModelOutput(rawResponse);
 
-    return plan ? new Plan(plan, think) : undefined;
+    return plan ? new Plan(plan, think ?? reasoning?.trim()) : undefined;
   }
 }

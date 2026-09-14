@@ -136,7 +136,9 @@ describe("Planner", () => {
       messages: [
         {
           role: "system",
-          content: expect.stringContaining("# Instructions\nBe concise"),
+          content: expect.stringMatching(
+            /^Be concise\n<tools>\[\{name:'getWeather'/,
+          ),
         },
         { role: "user", content: "Test query" },
       ],
