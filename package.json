@@ -44,9 +44,6 @@
     "@types/bun": "1.4.2",
     "typescript": "^7.0.2"
   },
-  "peerDependencies": {
-    "typescript": "^5 || ^7"
-  },
   "dependencies": {
     "json5": "^2.2.3",
     "openai": "^7.15.0",
