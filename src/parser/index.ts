@@ -64,7 +64,6 @@ export function parseModelOutput(raw: string) {
   return { think: parseThink(raw), plan };
 }
 
-// vLLM chat templates open the think block in the prompt, so the completion may start without "<think>"
 function parseThink(raw: string): string | undefined {
   const end = raw.indexOf("</think>");
 
