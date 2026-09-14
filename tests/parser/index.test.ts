@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import { parseModelOutput, parsePlanSteps } from "../../src/parser";
 import { PlanStepStatus } from "../../src/types";
 

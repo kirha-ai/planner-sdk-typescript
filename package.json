@@ -19,10 +19,10 @@
     "README.md"
   ],
   "scripts": {
-    "build": "bun build ./src/index.ts --outdir ./dist --target node --packages external && bun build ./src/index.ts --target node --packages external --format cjs --outfile ./dist/index.cjs && tsc --project tsconfig.build.json",
-    "test": "bun test",
+    "build": "tsup && tsc --project tsconfig.build.json",
+    "test": "vitest run",
     "lint": "biome check --write",
-    "prepublishOnly": "bun run build"
+    "prepublishOnly": "pnpm build"
   },
   "keywords": [
     "ai",
@@ -41,13 +41,16 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.13",
-    "@types/bun": "1.4.2",
-    "typescript": "^7.0.2"
+    "@types/node": "^26.5.1",
+    "tsup": "^8.5.1",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.0"
   },
   "dependencies": {
     "json5": "^2.2.3",
     "openai": "^7.15.0",
     "uuid": "^14.0.2",
     "zod": "^4.6.5"
-  }
+  },
+  "packageManager": "pnpm@12.4.1"
 }

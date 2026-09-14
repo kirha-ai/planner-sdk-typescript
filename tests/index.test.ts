@@ -1,4 +1,4 @@
-import { describe, expect, it, spyOn } from "bun:test";
+import { describe, expect, it, vi } from "vitest";
 import { Planner, Plan, LATEST_MODEL_NAME } from "../src/index";
 import type { Tool } from "../src/types";
 import type { ChatCompletion } from "openai/resources/chat/completions";
@@ -81,10 +81,9 @@ describe("Planner", () => {
       apiKey: "test-key",
     });
 
-    const openaiMock = spyOn(
-      planner.openai.chat.completions,
-      "create",
-    ).mockResolvedValue(mockResponse as ChatCompletion);
+    const openaiMock = vi
+      .spyOn(planner.openai.chat.completions, "create")
+      .mockResolvedValue(mockResponse as ChatCompletion);
 
     const plan = await planner.generatePlan(
       "What's the weather in Paris? Send me an email about it.",
@@ -119,10 +118,9 @@ describe("Planner", () => {
       model: "custom-model",
     });
 
-    const openaiMock = spyOn(
-      planner.openai.chat.completions,
-      "create",
-    ).mockResolvedValue(mockResponse as ChatCompletion);
+    const openaiMock = vi
+      .spyOn(planner.openai.chat.completions, "create")
+      .mockResolvedValue(mockResponse as ChatCompletion);
 
     await planner.generatePlan("Test query", {
       tools: mockTools,
@@ -156,7 +154,7 @@ describe("Planner", () => {
       apiKey: "test-key",
     });
 
-    spyOn(planner.openai.chat.completions, "create").mockResolvedValue(
+    vi.spyOn(planner.openai.chat.completions, "create").mockResolvedValue(
       mockResponse as ChatCompletion,
     );
 
@@ -185,7 +183,7 @@ describe("Planner", () => {
       apiKey: "test-key",
     });
 
-    spyOn(planner.openai.chat.completions, "create").mockResolvedValue(
+    vi.spyOn(planner.openai.chat.completions, "create").mockResolvedValue(
       mockResponse as ChatCompletion,
     );
 
@@ -214,7 +212,7 @@ describe("Planner", () => {
       apiKey: "test-key",
     });
 
-    spyOn(planner.openai.chat.completions, "create").mockResolvedValue(
+    vi.spyOn(planner.openai.chat.completions, "create").mockResolvedValue(
       mockResponse as ChatCompletion,
     );
 
@@ -256,7 +254,7 @@ describe("Plan", () => {
       apiKey: "test-key",
     });
 
-    spyOn(planner.openai.chat.completions, "create").mockResolvedValue(
+    vi.spyOn(planner.openai.chat.completions, "create").mockResolvedValue(
       mockResponse as ChatCompletion,
     );
 
@@ -315,7 +313,7 @@ describe("Plan", () => {
       apiKey: "test-key",
     });
 
-    spyOn(planner.openai.chat.completions, "create").mockResolvedValue(
+    vi.spyOn(planner.openai.chat.completions, "create").mockResolvedValue(
       mockResponse as ChatCompletion,
     );
 

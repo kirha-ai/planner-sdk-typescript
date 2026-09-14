@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import { parseTemplateString } from "../../src/parser/template-string-parser";
 
 describe("parseTemplateString", () => {

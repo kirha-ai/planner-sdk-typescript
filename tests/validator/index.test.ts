@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import { isValidPlan } from "../../src/index";
 import { PlanStepStatus, type PlanStep, type Tool } from "../../src/types";
 
